@@ -1,0 +1,7 @@
+services:
+  wadio:
+    build: .
+    volumes:
+      - ./music:/music:ro
+    ports:
+      - 7887:7887
