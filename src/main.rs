@@ -199,6 +199,9 @@ fn main() {
       }
     }
 
+    // Short pause between songs
+    std::thread::sleep(std::time::Duration::from_millis(1000));
+
     println!("Finished playing {}", song.name);
   }
 }
