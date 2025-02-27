@@ -41,16 +41,12 @@ impl Track {
 // https://codeberg.org/obsoleszenz/librecdj/src/branch/main/crates/libplayer/src/sample_loader.rs#L195
 pub fn get_bitrate(path: &PathBuf) -> Result<u64, Box<dyn std::error::Error>> {
   let file = File::open(path)?;
-  let filesize= file.metadata()?.len();
+  let filesize = file.metadata()?.len();
   let mss = MediaSourceStream::new(Box::new(file), Default::default());
   let mut hint = Hint::new();
   let hint = hint.with_extension("mp3");
-  let probe = symphonia::default::get_probe().format(
-    hint,
-    mss,
-    &Default::default(),
-    &Default::default(),
-  )?;
+  let probe =
+    symphonia::default::get_probe().format(hint, mss, &Default::default(), &Default::default())?;
   let format = probe.format;
   let track = format.default_track().ok_or("no default track")?;
   let n_frames = match track.codec_params.n_frames {
@@ -67,4 +63,3 @@ pub fn get_bitrate(path: &PathBuf) -> Result<u64, Box<dyn std::error::Error>> {
 
   Ok(bitrate)
 }
-

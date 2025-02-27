@@ -1,12 +1,21 @@
-use std::{fs::File, io::Read, path::PathBuf, sync::{Arc, Mutex}};
+use std::{
+  fs::File,
+  io::Read,
+  path::PathBuf,
+  sync::{Arc, Mutex},
+};
 
 use gumdrop::Options;
 use manager::Manager;
+use rand::Rng;
 use tiny_http::{Response, Server, ServerConfig};
 use track::get_bitrate;
+use util::{find_mp3_sync_word, skip_id3_tags};
+use uuid::fmt::Braced;
 
 mod manager;
 mod track;
+mod util;
 
 #[derive(Debug, Options)]
 struct Args {
@@ -19,12 +28,13 @@ struct Args {
   #[options(help = "path where music is stored")]
   music_path: String,
 
-  #[options(help = "cache the song list, so restarts are faster", default = "true")]
-  cache: bool,
+  #[options(help = "automatically rescan the music path for new music whenever the current playlist is finished", default = "true")]
+  auto_refresh: bool,
 }
 
 fn main() {
   let args: Args = Args::parse_args_default_or_exit();
+  let autorefresh = args.auto_refresh;
 
   if args.help {
     println!("{}", Args::usage());
@@ -40,35 +50,16 @@ fn main() {
     return;
   }
 
-  println!("reading music in {}", args.music_path);
+  println!("Reading music in {}", args.music_path);
 
-  let (tx, rx) = flume::unbounded();
-  let mut manager = Arc::new(Mutex::new(Manager::new(&PathBuf::from(args.music_path), tx).expect("failed to create manager")));
+  let master = Arc::new(Mutex::new(
+    Manager::new(&PathBuf::from(args.music_path)).expect("failed to create manager"),
+  ));
 
-  println!("found {} songs", manager.lock().unwrap().songs().len());
+  println!("Found {} songs", master.lock().unwrap().songs().len());
 
-  manager.lock().unwrap().songs_to_queue();
-  manager.lock().unwrap().shuffle();
-
-  // Master thread to manage the manager
-  std::thread::spawn(move || {
-    loop {
-      let manager = manager.clone();
-      let mut manager = manager.lock().unwrap();
-
-      // Get the next song
-      let next = manager.next();
-      if next.is_none() {
-        // Reshuffle a new queue
-        manager.songs_to_queue();
-        manager.shuffle();
-        continue;
-      }
-
-      // Drop the lock
-      drop(manager);
-    }
-  });
+  master.lock().unwrap().songs_to_queue();
+  master.lock().unwrap().shuffle();
 
   let server = Server::http("0.0.0.0:7887").expect("failed to create HTTP server");
   let clients_recv = Arc::new(Mutex::new(vec![]));
@@ -87,17 +78,19 @@ fn main() {
       };
 
       match req.url() {
-        "/" => { /* Hosted site */ },
         "/mp3" => {
           let clients = clients_recv.clone();
           let mut clients = clients.lock().unwrap();
           let uuid = uuid::Uuid::new_v4();
+
+          println!("New client: {} ({:?})", uuid, req.remote_addr());
+
           let mut writer = req.into_writer();
 
-          println!("new client: {}", uuid);
-
           // Write the initial header
-          writer.write(b"HTTP/1.1 200 OK\r\nContent-Type: audio/mpeg\r\n\r\n").unwrap();
+          writer
+            .write(b"HTTP/1.1 200 OK\r\nContent-Type: audio/mpeg\r\n\r\n")
+            .unwrap();
 
           clients.push((uuid, writer));
 
@@ -109,26 +102,103 @@ fn main() {
     }
   });
 
-  // DEBUG write test file to clients
-  let br = get_bitrate(&PathBuf::from("audio2.mp3")).unwrap();
-  let byterate = br / 8;
+  println!("Listening on http://0.0.0.0:7887");
+  println!("MP3 stream available at http://0.0.0.0:7887/mp3");
 
-  let file = File::open("audio2.mp3").unwrap();
-  let mut reader = std::io::BufReader::new(file);
-  let mut buf = vec![0; byterate as usize];
-  
-  while let Ok(n) = reader.read(&mut buf) {
-    let clients = clients.clone();
-    let mut clients = clients.lock().unwrap();
-    for (_, ref mut writer) in clients.iter_mut() {
-      println!("writing {} bytes", n);
-      writer.write(&buf[..n]).unwrap();
+  loop {
+    // Get next song
+    if !master.lock().unwrap().next() {
+      println!("No more songs, shuffling");
+      // Reshuffle a new queue
+      if autorefresh {
+        match master.lock().unwrap().refresh() {
+          Ok(_) => {}
+          Err(err) => {
+            eprintln!("Failed to refresh music path: {}", err);
+          }
+        };
+      }
+      master.lock().unwrap().songs_to_queue();
+      master.lock().unwrap().shuffle();
+      continue;
     }
 
-    std::thread::sleep(std::time::Duration::from_millis(1000));
+    let song = match master.lock().unwrap().current() {
+      Some(song) => song,
+      None => {
+        eprintln!("No current song, this should never happen!");
+        break;
+      }
+    };
 
-    if n == 0 {
-      break;
+    println!("Playing {}", song.name);
+
+    let path = song.path;
+    let bitrate = match get_bitrate(&path) {
+      Ok(bitrate) => bitrate,
+      Err(err) => {
+        eprintln!("Failed to get bitrate for {}: {}", song.name, err);
+        continue;
+      }
+    };
+    // Add a bit of wiggle room so any discrepancies don't cause lag/stutter/choppy streams
+    // This does make it so someone could skip ahead (and then lag while it waits for the next song)
+    // but whatever.
+    // This number comes out of nowhere, it is not based on any math or rigorous testing.
+    let byterate = (bitrate / 8) + 1200;
+    let file = match File::open(path) {
+      Ok(file) => file,
+      Err(err) => {
+        eprintln!("Failed to open file {}: {}", song.name, err);
+        continue;
+      }
+    };
+    let mut reader = std::io::BufReader::new(file);
+    let mut buf = vec![0; byterate as usize];
+
+    // If we don't skip these, some programs (like browsers) get confused.
+    // This is because they read the file metadata, which tells it the length
+    // of the MP3, but we are obviously just going to keep playing MP3 data, so
+    // it doesn't match
+    if skip_id3_tags(&mut reader).is_err() {
+      eprintln!("Failed to skip ID3 tags for {}", song.name);
+      continue;
     }
+
+    if find_mp3_sync_word(&mut reader).is_err() {
+      eprintln!("Failed to find MP3 sync word for {}", song.name);
+      continue;
+    }
+
+    while let Ok(n) = reader.read(&mut buf) {
+      let clients = clients.clone();
+      let mut clients = clients.lock().unwrap();
+
+      let mut idx = 0;
+
+      // We do the loop like this because we need to be able to remove clients on the fly
+      while idx < clients.len() {
+        let (uuid, ref mut writer) = clients[idx];
+        match writer.write(&buf[..n]) {
+          Ok(_) => {}
+          Err(err) => {
+            println!(
+              "Error writing to client (likely disconnected) {}: {}",
+              uuid, err
+            );
+            clients.retain(|(u, _)| *u != uuid);
+          }
+        };
+        idx += 1;
+      }
+
+      std::thread::sleep(std::time::Duration::from_millis(1000));
+
+      if n == 0 {
+        break;
+      }
+    }
+
+    println!("Finished playing {}", song.name);
   }
 }

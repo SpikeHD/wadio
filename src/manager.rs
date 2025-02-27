@@ -1,6 +1,8 @@
 use std::{
   fs::DirEntry,
-  path::{Path, PathBuf}, sync::{Arc, Mutex, MutexGuard}, time::SystemTime,
+  path::{Path, PathBuf},
+  sync::{Arc, Mutex, MutexGuard},
+  time::SystemTime,
 };
 
 use rand::{seq::SliceRandom, Rng};
@@ -9,8 +11,7 @@ use crate::track::Track;
 
 #[derive(Debug, Clone)]
 pub struct Manager {
-  // We will transmit data in chunks of 8192 bytes (8kb)
-  data_transmit: flume::Sender<[u8; 8192]>,
+  path: PathBuf,
   songs: Arc<Mutex<Vec<Track>>>,
   queue: Arc<Mutex<Vec<Track>>>,
   current: Option<Track>,
@@ -18,21 +19,23 @@ pub struct Manager {
 }
 
 impl Manager {
-  pub fn new(
-    path: &PathBuf,
-    tx: flume::Sender<[u8; 8192]>,
-  ) -> Result<Self, Box<dyn std::error::Error>> {
+  pub fn new(path: &PathBuf) -> Result<Self, Box<dyn std::error::Error>> {
     // read all tracks recursively
     let songs = Arc::new(Mutex::new(find_songs(path)?));
     let queue = Arc::new(Mutex::new(vec![]));
 
     Ok(Self {
-      data_transmit: tx,
+      path: path.clone(),
       songs,
       queue,
       current: None,
       song_start: SystemTime::now(),
     })
+  }
+
+  pub fn refresh(&mut self) -> Result<(), Box<dyn std::error::Error>> {
+    self.songs = Arc::new(Mutex::new(find_songs(&self.path)?));
+    Ok(())
   }
 
   pub fn current(&self) -> Option<Track> {
@@ -62,11 +65,11 @@ impl Manager {
     queue.push(track);
   }
 
-  pub fn next(&mut self) -> Option<Track> {
+  pub fn next(&mut self) -> bool {
     let mut queue = self.queue.lock().unwrap();
     self.song_start = SystemTime::now();
     self.current = queue.pop();
-    self.current.clone()
+    self.current.is_some()
   }
 
   pub fn elapsed(&self) -> u64 {
