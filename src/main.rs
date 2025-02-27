@@ -7,11 +7,8 @@ use std::{
 
 use gumdrop::Options;
 use manager::Manager;
-use rand::Rng;
-use tiny_http::{Response, Server, ServerConfig};
-use track::get_bitrate;
+use tiny_http::Server;
 use util::{find_mp3_sync_word, skip_id3_tags};
-use uuid::fmt::Braced;
 
 mod manager;
 mod track;
@@ -28,7 +25,10 @@ struct Args {
   #[options(help = "path where music is stored")]
   music_path: String,
 
-  #[options(help = "automatically rescan the music path for new music whenever the current playlist is finished", default = "true")]
+  #[options(
+    help = "automatically rescan the music path for new music whenever the current playlist is finished",
+    default = "true"
+  )]
   auto_refresh: bool,
 }
 
@@ -77,27 +77,23 @@ fn main() {
         }
       };
 
-      match req.url() {
-        "/mp3" => {
-          let clients = clients_recv.clone();
-          let mut clients = clients.lock().unwrap();
-          let uuid = uuid::Uuid::new_v4();
+      if req.url() == "/mp3" {
+        let clients = clients_recv.clone();
+        let mut clients = clients.lock().unwrap();
+        let uuid = uuid::Uuid::new_v4();
 
-          println!("New client: {} ({:?})", uuid, req.remote_addr());
+        println!("New client: {} ({:?})", uuid, req.remote_addr());
 
-          let mut writer = req.into_writer();
+        let mut writer = req.into_writer();
 
-          // Write the initial header
-          writer
-            .write(b"HTTP/1.1 200 OK\r\nContent-Type: audio/mpeg\r\n\r\n")
-            .unwrap();
+        // Write the initial header
+        writer
+          .write(b"HTTP/1.1 200 OK\r\nContent-Type: audio/mpeg\r\n\r\n")
+          .unwrap();
 
-          clients.push((uuid, writer));
+        clients.push((uuid, writer));
 
-          drop(clients);
-        }
-        // Ignore everything else
-        _ => {}
+        drop(clients);
       }
     }
   });
@@ -131,16 +127,10 @@ fn main() {
       }
     };
 
-    println!("Playing {}", song.name);
+    println!("Now playing {} - {} (from {})", song.artist, song.name, song.album);
 
     let path = song.path;
-    let bitrate = match get_bitrate(&path) {
-      Ok(bitrate) => bitrate,
-      Err(err) => {
-        eprintln!("Failed to get bitrate for {}: {}", song.name, err);
-        continue;
-      }
-    };
+    let bitrate = song.bitrate;
     // Add a bit of wiggle room so any discrepancies don't cause lag/stutter/choppy streams
     // This does make it so someone could skip ahead (and then lag while it waits for the next song)
     // but whatever.
@@ -179,7 +169,7 @@ fn main() {
       // We do the loop like this because we need to be able to remove clients on the fly
       while idx < clients.len() {
         let (uuid, ref mut writer) = clients[idx];
-        match writer.write(&buf[..n]) {
+        match writer.write_all(&buf[..n]) {
           Ok(_) => {}
           Err(err) => {
             println!(

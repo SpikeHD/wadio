@@ -1,11 +1,10 @@
 use std::{
-  fs::DirEntry,
   path::{Path, PathBuf},
   sync::{Arc, Mutex, MutexGuard},
   time::SystemTime,
 };
 
-use rand::{seq::SliceRandom, Rng};
+use rand::seq::SliceRandom;
 
 use crate::track::Track;
 
@@ -46,9 +45,9 @@ impl Manager {
     self.songs.lock().unwrap()
   }
 
-  pub fn queue(&self) -> MutexGuard<Vec<Track>> {
-    self.queue.lock().unwrap()
-  }
+  // pub fn queue(&self) -> MutexGuard<Vec<Track>> {
+  //   self.queue.lock().unwrap()
+  // }
 
   pub fn songs_to_queue(&mut self) {
     let songs = self.songs.lock().unwrap();
@@ -60,10 +59,10 @@ impl Manager {
     queue.shuffle(&mut rand::rng());
   }
 
-  pub fn add_to_queue(&mut self, track: Track) {
-    let mut queue = self.queue.lock().unwrap();
-    queue.push(track);
-  }
+  // pub fn add_to_queue(&mut self, track: Track) {
+  //   let mut queue = self.queue.lock().unwrap();
+  //   queue.push(track);
+  // }
 
   pub fn next(&mut self) -> bool {
     let mut queue = self.queue.lock().unwrap();
@@ -72,9 +71,9 @@ impl Manager {
     self.current.is_some()
   }
 
-  pub fn elapsed(&self) -> u64 {
-    self.song_start.elapsed().unwrap().as_millis() as u64
-  }
+  // pub fn elapsed(&self) -> u64 {
+  //   self.song_start.elapsed().unwrap().as_millis() as u64
+  // }
 }
 
 fn find_songs(path: &Path) -> Result<Vec<Track>, Box<dyn std::error::Error>> {

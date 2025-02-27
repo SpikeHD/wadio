@@ -1,4 +1,3 @@
-use core::time;
 use std::{borrow::Cow, fs::File, path::PathBuf};
 
 use lofty::{file::TaggedFileExt, read_from_path, tag::Accessor};
@@ -49,10 +48,7 @@ pub fn get_bitrate(path: &PathBuf) -> Result<u64, Box<dyn std::error::Error>> {
     symphonia::default::get_probe().format(hint, mss, &Default::default(), &Default::default())?;
   let format = probe.format;
   let track = format.default_track().ok_or("no default track")?;
-  let n_frames = match track.codec_params.n_frames {
-    Some(n_frames) => n_frames,
-    None => 0,
-  };
+  let n_frames = track.codec_params.n_frames.unwrap_or_default();
   let time_base = match track.codec_params.time_base {
     Some(time_base) => time_base,
     None => TimeBase::new(1, 1),

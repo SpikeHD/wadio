@@ -1,4 +1,7 @@
-use std::{fs::File, io::{BufReader, Read, Seek}};
+use std::{
+  fs::File,
+  io::{BufReader, Read, Seek},
+};
 
 pub fn skip_id3_tags(reader: &mut BufReader<File>) -> std::io::Result<()> {
   let mut buf = [0; 10]; // ID3 header is at least 10 bytes
