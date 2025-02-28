@@ -150,11 +150,7 @@ fn main() {
 
     let path = song.path;
     let bitrate = song.bitrate;
-    // Add a bit of wiggle room so any discrepancies don't cause lag/stutter/choppy streams
-    // This does make it so someone could skip ahead (and then lag while it waits for the next song)
-    // but whatever.
-    // This number comes out of nowhere, it is not based on any math or rigorous testing.
-    let byterate = (bitrate / 8) + 400;
+    let byterate = bitrate / 8;
     let file = match File::open(path) {
       Ok(file) => file,
       Err(err) => {
