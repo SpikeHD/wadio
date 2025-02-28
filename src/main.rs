@@ -104,7 +104,7 @@ fn main() {
 
         // Write the initial header
         writer
-          .write(b"HTTP/1.1 200 OK\r\nContent-Type: audio/mpeg\r\n\r\n")
+          .write(b"HTTP/1.1 200 OK\r\nContent-Type: audio/mpeg\r\nCache-Control: no-cache, no-store, must-revalidate\r\nPragma: no-cahe\r\nExpires: 0\\r\n\r\n")
           .unwrap();
 
         clients.push((uuid, writer));
