@@ -20,6 +20,11 @@ struct Song {
   length: u64,
 }
 
+#[derive(Debug, Serialize, Deserialize)]
+struct TrackList {
+  tracks: Vec<Song>,
+}
+
 pub fn handle_api_request(req: Request, manager: &Arc<Mutex<Manager>>) -> Result<(), Box<dyn std::error::Error>> {
   if req.method() != &Method::Get {
     return Ok(());
@@ -52,6 +57,32 @@ pub fn handle_api_request(req: Request, manager: &Arc<Mutex<Manager>>) -> Result
       }
       Err(err) => {
         eprintln!("Error handling /api/cover request: {}", err);
+      }
+    };
+  }
+
+  if req.url() == "/api/queue" {
+    match queue(manager) {
+      Ok(data) => {
+        let data = json::to_string(&data);
+        res = Response::from_data(data.into_bytes());
+        res.add_header(Header::from_bytes(b"Content-Type", b"application/json").unwrap());
+      }
+      Err(err) => {
+        eprintln!("Error handling /api/queue request: {}", err);
+      }
+    };
+  }
+
+  if req.url() == "/api/history" {
+    match history(manager) {
+      Ok(data) => {
+        let data = json::to_string(&data);
+        res = Response::from_data(data.into_bytes());
+        res.add_header(Header::from_bytes(b"Content-Type", b"application/json").unwrap());
+      }
+      Err(err) => {
+        eprintln!("Error handling /api/history request: {}", err);
       }
     };
   }
@@ -118,4 +149,42 @@ fn playing_cover(manager: &Arc<Mutex<Manager>>) -> Result<(String, Vec<u8>), Box
   let mime = cover.mime_type().unwrap_or(&MimeType::Jpeg);
 
   Ok((mime.to_string(), cover.data().to_vec()))
+}
+
+fn queue(manager: &Arc<Mutex<Manager>>) -> Result<Box<dyn Serialize>, Box<dyn std::error::Error>> {
+  let manager = manager.lock().unwrap();
+  let queue = manager.queue();
+
+  Ok(
+    Box::new(
+      TrackList {
+        tracks: queue.iter().map(|track| Song {
+          name: track.name.clone(),
+          artist: track.artist.clone(),
+          album: track.album.clone(),
+          length: track.length,
+          elapsed: 0,
+        }).collect(),
+      }
+    )
+  )
+}
+
+fn history(manager: &Arc<Mutex<Manager>>) -> Result<Box<dyn Serialize>, Box<dyn std::error::Error>> {
+  let manager = manager.lock().unwrap();
+  let history = manager.history();
+
+  Ok(
+    Box::new(
+      TrackList {
+        tracks: history.iter().map(|track| Song {
+          name: track.name.clone(),
+          artist: track.artist.clone(),
+          album: track.album.clone(),
+          length: track.length,
+          elapsed: 0,
+        }).collect(),
+      }
+    )
+  )
 }

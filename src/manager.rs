@@ -1,7 +1,5 @@
 use std::{
-  path::{Path, PathBuf},
-  sync::{Arc, Mutex, MutexGuard},
-  time::SystemTime,
+  path::{Path, PathBuf}, sync::{Arc, Mutex, MutexGuard}, time::SystemTime
 };
 
 use rand::seq::SliceRandom;
@@ -14,7 +12,7 @@ pub struct Manager {
   songs: Arc<Mutex<Vec<Track>>>,
   queue: Arc<Mutex<Vec<Track>>>,
   current: Option<Track>,
-  history: Vec<Track>,
+  history: Arc<Mutex<Vec<Track>>>,
   song_start: SystemTime,
 }
 
@@ -23,13 +21,14 @@ impl Manager {
     // read all tracks recursively
     let songs = Arc::new(Mutex::new(find_songs(path)?));
     let queue = Arc::new(Mutex::new(vec![]));
+    let history = Arc::new(Mutex::new(vec![]));
 
     Ok(Self {
       path: path.clone(),
       songs,
       queue,
       current: None,
-      history: vec![],
+      history,
       song_start: SystemTime::now(),
     })
   }
@@ -47,9 +46,13 @@ impl Manager {
     self.songs.lock().unwrap()
   }
 
-  // pub fn queue(&self) -> MutexGuard<Vec<Track>> {
-  //   self.queue.lock().unwrap()
-  // }
+  pub fn queue(&self) -> MutexGuard<Vec<Track>> {
+    self.queue.lock().unwrap()
+  }
+
+  pub fn history(&self) -> MutexGuard<Vec<Track>> {
+    self.history.lock().unwrap()
+  }
 
   pub fn songs_to_queue(&mut self) {
     let songs = self.songs.lock().unwrap();
@@ -80,12 +83,14 @@ impl Manager {
   }
 
   fn add_to_history(&mut self, track: Track) {
+    let mut history = self.history.lock().unwrap();
+
     // Ensure history stays to 10 elements
-    if self.history.len() >= 10 {
-      self.history.remove(0);
+    if history.len() >= 10 {
+      history.remove(0);
     }
 
-    self.history.push(track);
+    history.push(track);
   }
 
   pub fn elapsed(&self) -> u64 {
