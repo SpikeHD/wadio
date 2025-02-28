@@ -59,8 +59,5 @@ pub fn get_length_bitrate(path: &PathBuf) -> Result<(u64, u64), Box<dyn std::err
   let bitrate = (filesize as f64 * 8.0) / length as f64;
   let bitrate = bitrate as u64;
 
-  Ok((
-    length * 1000,
-    bitrate,
-  ))
+  Ok((length * 1000, bitrate))
 }

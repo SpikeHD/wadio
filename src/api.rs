@@ -1,6 +1,6 @@
-use std::{fs::File, sync::{Arc, Mutex}};
+use std::sync::{Arc, Mutex};
 
-use lofty::{file::TaggedFileExt, picture::MimeType, probe::Probe, tag::{Tag, TagType}};
+use lofty::{file::TaggedFileExt, picture::MimeType};
 use miniserde::{json, Deserialize, Serialize};
 use tiny_http::{Header, Method, Request, Response};
 
@@ -25,7 +25,10 @@ struct TrackList {
   tracks: Vec<Song>,
 }
 
-pub fn handle_api_request(req: Request, manager: &Arc<Mutex<Manager>>) -> Result<(), Box<dyn std::error::Error>> {
+pub fn handle_api_request(
+  req: Request,
+  manager: &Arc<Mutex<Manager>>,
+) -> Result<(), Box<dyn std::error::Error>> {
   if req.method() != &Method::Get {
     return Ok(());
   }
@@ -97,33 +100,31 @@ pub fn handle_api_request(req: Request, manager: &Arc<Mutex<Manager>>) -> Result
   Ok(())
 }
 
-fn playing(manager: &Arc<Mutex<Manager>>) -> Result<Box<dyn Serialize>, Box<dyn std::error::Error>> {
+fn playing(
+  manager: &Arc<Mutex<Manager>>,
+) -> Result<Box<dyn Serialize>, Box<dyn std::error::Error>> {
   let track = match manager.lock().unwrap().current() {
     Some(track) => track,
     None => {
-      return Ok(Box::new(
-        Generic {
-          message: "No current song".to_string(),
-        }
-      ));
+      return Ok(Box::new(Generic {
+        message: "No current song".to_string(),
+      }));
     }
   };
   let elapsed = manager.lock().unwrap().elapsed();
 
-  Ok(
-    Box::new(
-      Song {
-        name: track.name,
-        artist: track.artist,
-        album: track.album,
-        length: track.length,
-        elapsed,
-      }
-    )
-  )
+  Ok(Box::new(Song {
+    name: track.name,
+    artist: track.artist,
+    album: track.album,
+    length: track.length,
+    elapsed,
+  }))
 }
 
-fn playing_cover(manager: &Arc<Mutex<Manager>>) -> Result<(String, Vec<u8>), Box<dyn std::error::Error>> {
+fn playing_cover(
+  manager: &Arc<Mutex<Manager>>,
+) -> Result<(String, Vec<u8>), Box<dyn std::error::Error>> {
   let track = match manager.lock().unwrap().current() {
     Some(track) => track,
     None => {
@@ -140,7 +141,7 @@ fn playing_cover(manager: &Arc<Mutex<Manager>>) -> Result<(String, Vec<u8>), Box
   };
 
   let pictures = tag.pictures();
-  let cover = match pictures.get(0) {
+  let cover = match pictures.first() {
     Some(cover) => cover,
     None => {
       return Ok(("image/jpeg".to_string(), vec![]));
@@ -155,36 +156,36 @@ fn queue(manager: &Arc<Mutex<Manager>>) -> Result<Box<dyn Serialize>, Box<dyn st
   let manager = manager.lock().unwrap();
   let queue = manager.queue();
 
-  Ok(
-    Box::new(
-      TrackList {
-        tracks: queue.iter().map(|track| Song {
-          name: track.name.clone(),
-          artist: track.artist.clone(),
-          album: track.album.clone(),
-          length: track.length,
-          elapsed: 0,
-        }).collect(),
-      }
-    )
-  )
+  Ok(Box::new(TrackList {
+    tracks: queue
+      .iter()
+      .map(|track| Song {
+        name: track.name.clone(),
+        artist: track.artist.clone(),
+        album: track.album.clone(),
+        length: track.length,
+        elapsed: 0,
+      })
+      .collect(),
+  }))
 }
 
-fn history(manager: &Arc<Mutex<Manager>>) -> Result<Box<dyn Serialize>, Box<dyn std::error::Error>> {
+fn history(
+  manager: &Arc<Mutex<Manager>>,
+) -> Result<Box<dyn Serialize>, Box<dyn std::error::Error>> {
   let manager = manager.lock().unwrap();
   let history = manager.history();
 
-  Ok(
-    Box::new(
-      TrackList {
-        tracks: history.iter().map(|track| Song {
-          name: track.name.clone(),
-          artist: track.artist.clone(),
-          album: track.album.clone(),
-          length: track.length,
-          elapsed: 0,
-        }).collect(),
-      }
-    )
-  )
+  Ok(Box::new(TrackList {
+    tracks: history
+      .iter()
+      .map(|track| Song {
+        name: track.name.clone(),
+        artist: track.artist.clone(),
+        album: track.album.clone(),
+        length: track.length,
+        elapsed: 0,
+      })
+      .collect(),
+  }))
 }

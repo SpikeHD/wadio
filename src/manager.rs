@@ -1,5 +1,7 @@
 use std::{
-  path::{Path, PathBuf}, sync::{Arc, Mutex, MutexGuard}, time::SystemTime
+  path::{Path, PathBuf},
+  sync::{Arc, Mutex, MutexGuard},
+  time::SystemTime,
 };
 
 use rand::seq::SliceRandom;

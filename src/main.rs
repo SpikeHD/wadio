@@ -143,7 +143,10 @@ fn main() {
       }
     };
 
-    println!("Now playing {} - {} (from {})", song.artist, song.name, song.album);
+    println!(
+      "Now playing {} - {} (from {})",
+      song.artist, song.name, song.album
+    );
 
     let path = song.path;
     let bitrate = song.bitrate;
