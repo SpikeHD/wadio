@@ -1,5 +1,6 @@
-use std::sync::{Arc, Mutex};
+use std::{fs::File, sync::{Arc, Mutex}};
 
+use lofty::{file::TaggedFileExt, picture::MimeType, probe::Probe, tag::{Tag, TagType}};
 use miniserde::{json, Deserialize, Serialize};
 use tiny_http::{Header, Method, Request, Response};
 
@@ -35,9 +36,22 @@ pub fn handle_api_request(req: Request, manager: &Arc<Mutex<Manager>>) -> Result
       Ok(data) => {
         let data = json::to_string(&data);
         res = Response::from_data(data.into_bytes());
+        res.add_header(Header::from_bytes(b"Content-Type", b"application/json").unwrap());
       }
       Err(err) => {
         eprintln!("Error handling /api/next request: {}", err);
+      }
+    };
+  }
+
+  if req.url() == "/api/cover" {
+    match playing_cover(manager) {
+      Ok((mime, data)) => {
+        res = Response::from_data(data);
+        res.add_header(Header::from_bytes(b"Content-Type", mime.as_bytes()).unwrap());
+      }
+      Err(err) => {
+        eprintln!("Error handling /api/cover request: {}", err);
       }
     };
   }
@@ -52,7 +66,7 @@ pub fn handle_api_request(req: Request, manager: &Arc<Mutex<Manager>>) -> Result
   Ok(())
 }
 
-pub fn playing(manager: &Arc<Mutex<Manager>>) -> Result<Box<dyn Serialize>, Box<dyn std::error::Error>> {
+fn playing(manager: &Arc<Mutex<Manager>>) -> Result<Box<dyn Serialize>, Box<dyn std::error::Error>> {
   let track = match manager.lock().unwrap().current() {
     Some(track) => track,
     None => {
@@ -76,4 +90,32 @@ pub fn playing(manager: &Arc<Mutex<Manager>>) -> Result<Box<dyn Serialize>, Box<
       }
     )
   )
+}
+
+fn playing_cover(manager: &Arc<Mutex<Manager>>) -> Result<(String, Vec<u8>), Box<dyn std::error::Error>> {
+  let track = match manager.lock().unwrap().current() {
+    Some(track) => track,
+    None => {
+      return Ok(("image/jpeg".to_string(), vec![]));
+    }
+  };
+
+  let tag = lofty::read_from_path(track.path)?;
+  let tag = match tag.primary_tag() {
+    Some(tag) => tag,
+    None => {
+      return Ok(("image/jpeg".to_string(), vec![]));
+    }
+  };
+
+  let pictures = tag.pictures();
+  let cover = match pictures.get(0) {
+    Some(cover) => cover,
+    None => {
+      return Ok(("image/jpeg".to_string(), vec![]));
+    }
+  };
+  let mime = cover.mime_type().unwrap_or(&MimeType::Jpeg);
+
+  Ok((mime.to_string(), cover.data().to_vec()))
 }
