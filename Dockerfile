@@ -5,4 +5,4 @@ WORKDIR /src
 
 RUN cargo build --release
 
-CMD ["/src/target/release/wadio", "--music-path", "/music"]
+CMD ["/src/target/release/wadio", "--music-path", "/music", "--api"]

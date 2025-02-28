@@ -5,11 +5,13 @@ use std::{
   sync::{Arc, Mutex},
 };
 
+use api::handle_api_request;
 use gumdrop::Options;
 use manager::Manager;
 use tiny_http::Server;
 use util::{find_mp3_sync_word, skip_id3_tags};
 
+mod api;
 mod manager;
 mod track;
 mod util;
@@ -30,6 +32,9 @@ struct Args {
     default = "true"
   )]
   auto_refresh: bool,
+
+  #[options(help = "enable api routes")]
+  api: bool,
 }
 
 fn main() {
@@ -55,6 +60,7 @@ fn main() {
   let master = Arc::new(Mutex::new(
     Manager::new(&PathBuf::from(args.music_path)).expect("failed to create manager"),
   ));
+  let api_manager = master.clone();
 
   println!("Found {} songs", master.lock().unwrap().songs().len());
 
@@ -76,6 +82,16 @@ fn main() {
           continue;
         }
       };
+
+      if args.api && req.url().contains("/api") {
+        match handle_api_request(req, &api_manager) {
+          Ok(_) => {}
+          Err(err) => {
+            eprintln!("Error handling API request: {}", err);
+          }
+        };
+        continue;
+      }
 
       if req.url() == "/mp3" {
         let clients = clients_recv.clone();
@@ -135,7 +151,7 @@ fn main() {
     // This does make it so someone could skip ahead (and then lag while it waits for the next song)
     // but whatever.
     // This number comes out of nowhere, it is not based on any math or rigorous testing.
-    let byterate = (bitrate / 8) + 1200;
+    let byterate = (bitrate / 8) + 400;
     let file = match File::open(path) {
       Ok(file) => file,
       Err(err) => {

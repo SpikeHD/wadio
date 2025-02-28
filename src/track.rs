@@ -10,12 +10,13 @@ pub struct Track {
   pub name: String,
   pub artist: String,
   pub album: String,
+  pub length: u64,
   pub bitrate: u64,
 }
 
 impl Track {
   pub fn new(path: PathBuf) -> Result<Self, Box<dyn std::error::Error>> {
-    let bitrate = get_bitrate(&path)?;
+    let (length, bitrate) = get_length_bitrate(&path)?;
     let metadata = read_from_path(&path)?;
     let tag = metadata.primary_tag();
 
@@ -32,13 +33,14 @@ impl Track {
       name,
       artist,
       album,
+      length,
       bitrate,
     })
   }
 }
 
 // https://codeberg.org/obsoleszenz/librecdj/src/branch/main/crates/libplayer/src/sample_loader.rs#L195
-pub fn get_bitrate(path: &PathBuf) -> Result<u64, Box<dyn std::error::Error>> {
+pub fn get_length_bitrate(path: &PathBuf) -> Result<(u64, u64), Box<dyn std::error::Error>> {
   let file = File::open(path)?;
   let filesize = file.metadata()?.len();
   let mss = MediaSourceStream::new(Box::new(file), Default::default());
@@ -57,5 +59,8 @@ pub fn get_bitrate(path: &PathBuf) -> Result<u64, Box<dyn std::error::Error>> {
   let bitrate = (filesize as f64 * 8.0) / length as f64;
   let bitrate = bitrate as u64;
 
-  Ok(bitrate)
+  Ok((
+    length * 1000,
+    bitrate,
+  ))
 }

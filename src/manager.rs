@@ -14,6 +14,7 @@ pub struct Manager {
   songs: Arc<Mutex<Vec<Track>>>,
   queue: Arc<Mutex<Vec<Track>>>,
   current: Option<Track>,
+  history: Vec<Track>,
   song_start: SystemTime,
 }
 
@@ -28,6 +29,7 @@ impl Manager {
       songs,
       queue,
       current: None,
+      history: vec![],
       song_start: SystemTime::now(),
     })
   }
@@ -65,15 +67,30 @@ impl Manager {
   // }
 
   pub fn next(&mut self) -> bool {
+    // Add old current song to history
+    if let Some(current) = self.current.clone() {
+      self.add_to_history(current);
+    }
+
     let mut queue = self.queue.lock().unwrap();
+
     self.song_start = SystemTime::now();
     self.current = queue.pop();
     self.current.is_some()
   }
 
-  // pub fn elapsed(&self) -> u64 {
-  //   self.song_start.elapsed().unwrap().as_millis() as u64
-  // }
+  fn add_to_history(&mut self, track: Track) {
+    // Ensure history stays to 10 elements
+    if self.history.len() >= 10 {
+      self.history.remove(0);
+    }
+
+    self.history.push(track);
+  }
+
+  pub fn elapsed(&self) -> u64 {
+    self.song_start.elapsed().unwrap().as_millis() as u64
+  }
 }
 
 fn find_songs(path: &Path) -> Result<Vec<Track>, Box<dyn std::error::Error>> {
